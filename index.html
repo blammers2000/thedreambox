@@ -359,7 +359,7 @@
                     <div class="transport-wrapper" id="catbox-controls">
                         <div class="transport-controls">
                             <button class="transport-btn" id="prev-btn">◀ PREV</button>
-                            <button id="shuffle-btn" class="transport-btn">🔀 SHUF: OFF</button>
+                            <button id="shuffle-btn" class="transport-btn">🔀 SHUF: ON</button>
                             <button class="transport-btn" id="next-btn">NEXT ▶</button>
                         </div>
                     </div>
@@ -408,14 +408,15 @@
 
 <div class="loading-indicator" id="loadingIndicator">⏳ FETCHING PLAYLIST...</div>
 
+
 <script>
     // ============================================================
-    // UNLIMITED PLAYLIST PLAYER (fixed event names)
+    // UNLIMITED PLAYLIST PLAYER 
     // ============================================================
-    const API_KEY = 'AIzaSyAZKamrcHaJPk29dNx0U58gudRPlvxWtJI'; // <-- Your existing key
+    const API_KEY = 'AIzaSyAZKamrcHaJPk29dNx0U58gudRPlvxWtJI';
     let currentVideoIds = [];
     let currentIndex = 0;
-    let shuffleMode = false;
+    let shuffleMode = true; 
     let ytPlayer = null;
     let isLoading = false;
 
@@ -455,8 +456,13 @@
             const videoIds = await fetchAllVideoIds(playlistId);
             if (!videoIds.length) throw new Error('No videos found.');
             currentVideoIds = videoIds;
-            currentIndex = 0;
-            if (ytPlayer) ytPlayer.loadVideoById(currentVideoIds[0]);
+            
+            // --- MODIFIED: Select a random track for the initial load ---
+            currentIndex = Math.floor(Math.random() * currentVideoIds.length);
+            
+            // Load the randomly selected index instead of [0]
+            if (ytPlayer) ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
+            
             setLoading(false, `✅ LOADED ${currentVideoIds.length} VIDEOS`);
             setTimeout(() => setLoading(false), 2000);
         } catch (err) {
@@ -523,7 +529,7 @@
                 playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
                 events: {
                     onReady: onPlayerReady,
-                    onStateChange: onPlayerStateChange,   // fixed: was onStateChange
+                    onStateChange: onPlayerStateChange,
                     onError: onPlayerError
                 }
             });
