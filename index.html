@@ -6,10 +6,7 @@
     <title>DREAMBOX // CYBER DECK LOUNGE</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
-        /* ==========================================
-           Your original vaporwave CSS
-           (unchanged, kept the same look)
-        ========================================== */
+        /* Your original vaporwave CSS – unchanged (kept exactly as you provided) */
         * {
             margin: 0;
             padding: 0;
@@ -365,14 +362,15 @@
                 </div>
                 <div class="playlist-area">
                     <div class="playlist-selector-tabs" id="playlistTabsWrapper">
-                        <button class="playlist-btn active" data-playlist-id="PLm0x3HD8x6CP3no0izE7AreCY4pcIr5_7">MUSIC VIDEOS</button>
-                        <button class="playlist-btn" data-playlist-id="PLHMlZG4cXc4Kg_qSArbWS_8HwOdCnFgsG">PLUR</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6CMbBbwBL1upNiWF2wu2Boxq">VAPORWAVE</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6CMFcUY1pY3yN1LkPQ8Pyyic">SLUT POP</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6COvPZ6q89JXNg8d8lkLXLaQ">2010'S</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6CMnNt_WX6AppP05txGwYmM7">2000'S</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6CNIrhKVYizgkH28e1tQqy3L">80s'S</button>
-                        <button class="playlist-btn" data-playlist-id="PLm0x3HD8x6CN20O4nHZ1GLx1_9z-bNq0t">DISCOVER</button>
+                        <!-- data-playlist-id now refers to the JSON filename without extension -->
+                        <button class="playlist-btn active" data-playlist-id="music_videos">MUSIC VIDEOS</button>
+                        <button class="playlist-btn" data-playlist-id="plur">PLUR</button>
+                        <button class="playlist-btn" data-playlist-id="vaporwave">VAPORWAVE</button>
+                        <button class="playlist-btn" data-playlist-id="slutpop">SLUT POP</button>
+                        <button class="playlist-btn" data-playlist-id="2010s">2010'S</button>
+                        <button class="playlist-btn" data-playlist-id="2000s">2000'S</button>
+                        <button class="playlist-btn" data-playlist-id="80s">80's</button>
+                        <button class="playlist-btn" data-playlist-id="discover">DISCOVER</button>
                     </div>
                     <div class="vibe-text">
                         <i class="fas fa-sync-alt"></i> SELECT WAVELENGTH
@@ -407,12 +405,10 @@
 
 <div class="loading-indicator" id="loadingIndicator">⏳ FETCHING PLAYLIST...</div>
 
-
 <script>
     // ============================================================
-    // UNLIMITED PLAYLIST PLAYER 
+    // PLAYLIST PLAYER USING LOCAL JSON FILES (from /data folder)
     // ============================================================
-    const API_KEY = 'AIzaSyAZKamrcHaJPk29dNx0U58gudRPlvxWtJI';
     let currentVideoIds = [];
     let currentIndex = 0;
     let shuffleMode = true; 
@@ -424,19 +420,18 @@
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
 
-    async function fetchAllVideoIds(playlistId) {
-        let allIds = [];
-        let nextPageToken = '';
-        do {
-            const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${playlistId}&key=${API_KEY}&pageToken=${nextPageToken}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.error) throw new Error(data.error.message);
-            const ids = data.items.map(item => item.contentDetails.videoId);
-            allIds.push(...ids);
-            nextPageToken = data.nextPageToken || '';
-        } while (nextPageToken);
-        return allIds;
+    // Fetch video IDs from a local JSON file
+    async function fetchVideoIdsFromJSON(playlistId) {
+        const response = await fetch(`/data/${playlistId}.json`);
+        if (!response.ok) {
+            throw new Error(`Failed to load /data/${playlistId}.json (HTTP ${response.status})`);
+        }
+        const data = await response.json();
+        // Expect the JSON to be an array of video IDs (strings)
+        if (!Array.isArray(data)) {
+            throw new Error(`JSON file must contain an array of video IDs.`);
+        }
+        return data;
     }
 
     function setLoading(show, text = '⏳ FETCHING PLAYLIST...') {
@@ -447,26 +442,29 @@
     async function loadPlaylist(playlistId, buttonElement) {
         if (isLoading) return;
         isLoading = true;
-        setLoading(true, `⏳ FETCHING ${buttonElement.innerText}...`);
+        setLoading(true, `⏳ LOADING ${buttonElement.innerText}...`);
         document.querySelectorAll('.playlist-btn').forEach(btn => btn.classList.remove('active'));
         buttonElement.classList.add('active');
 
         try {
-            const videoIds = await fetchAllVideoIds(playlistId);
-            if (!videoIds.length) throw new Error('No videos found.');
+            const videoIds = await fetchVideoIdsFromJSON(playlistId);
+            if (!videoIds.length) throw new Error('No videos found in JSON.');
             currentVideoIds = videoIds;
             
-            // --- MODIFIED: Select a random track for the initial load ---
-            currentIndex = Math.floor(Math.random() * currentVideoIds.length);
+            // Random start index if shuffle is ON
+            if (shuffleMode) {
+                currentIndex = Math.floor(Math.random() * currentVideoIds.length);
+            } else {
+                currentIndex = 0;
+            }
             
-            // Load the randomly selected index instead of [0]
             if (ytPlayer) ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
             
             setLoading(false, `✅ LOADED ${currentVideoIds.length} VIDEOS`);
             setTimeout(() => setLoading(false), 2000);
         } catch (err) {
             console.error(err);
-            setLoading(false, '❌ ERROR LOADING');
+            setLoading(false, `❌ ERROR: ${err.message}`);
             setTimeout(() => setLoading(false), 3000);
         } finally {
             isLoading = false;
@@ -509,7 +507,10 @@
 
     function onPlayerReady() {
         const activeBtn = document.querySelector('.playlist-btn.active');
-        if (activeBtn) loadPlaylist(activeBtn.getAttribute('data-playlist-id'), activeBtn);
+        if (activeBtn) {
+            const playlistId = activeBtn.getAttribute('data-playlist-id');
+            if (playlistId) loadPlaylist(playlistId, activeBtn);
+        }
     }
 
     function onPlayerStateChange(event) {
