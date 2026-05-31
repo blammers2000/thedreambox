@@ -422,7 +422,7 @@
 
     // Fetch video IDs from a local JSON file
     async function fetchVideoIdsFromJSON(playlistId) {
-        const response = await fetch(`/data/${playlistId}.json`);
+        const response = await fetch(`data/${playlistId}.json`);
         if (!response.ok) {
             throw new Error(`Failed to load /data/${playlistId}.json (HTTP ${response.status})`);
         }
