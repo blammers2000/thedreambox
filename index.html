@@ -414,7 +414,6 @@
     </style>
 </head>
 <body>
-    <!-- Background video + fallback -->
     <div class="bg-container">
         <video id="bg-video" autoplay loop muted playsinline>
             <source src="https://assets.mixkit.co/videos/preview/mixkit-digital-glitch-background-3123-large.mp4" type="video/mp4">
@@ -506,8 +505,9 @@
     <script>
         // ============================================================
         // PLAYLIST PLAYER WITH ENRICHED JSON (id + title), NO API CALLS
+        // FIXED SHARE BUTTON INCLUDES YOUTUBE LINK
         // ============================================================
-        let currentVideos = [];   // array of objects {id, title}
+        let currentVideos = [];
         let currentIndex = 0;
         let shuffleMode = true; 
         let ytPlayer = null;
@@ -525,7 +525,6 @@
         const nowPlayingDiv = document.getElementById('nowPlaying');
         const toastDiv = document.getElementById('toast');
 
-        // Map playlist IDs to background video URLs
         const backgroundVideos = {
             default: "https://assets.mixkit.co/videos/preview/mixkit-digital-glitch-background-3123-large.mp4",
             music_videos: "https://assets.mixkit.co/videos/preview/mixkit-digital-glitch-background-3123-large.mp4",
@@ -552,13 +551,11 @@
             const response = await fetch(`data/${playlistId}.json`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
-            // Support both old format (array of IDs) and new format (array of objects)
             if (Array.isArray(data)) {
                 if (data.length > 0 && typeof data[0] === 'string') {
                     // old format: convert to enriched
                     return data.map(id => ({ id, title: `Video ${id.slice(0,8)}...` }));
                 }
-                // already enriched
                 return data;
             }
             throw new Error('Invalid JSON format');
@@ -613,23 +610,17 @@
             setLoading(true, `⏳ LOADING ${buttonElement.innerText}...`);
             document.querySelectorAll('.playlist-btn').forEach(btn => btn.classList.remove('active'));
             buttonElement.classList.add('active');
-
             updateBackground(playlistId);
-
             try {
                 const videos = await fetchEnrichedPlaylist(playlistId);
                 if (!videos.length) throw new Error('No videos found.');
                 currentVideos = videos;
-                
                 let startIndex = shuffleMode ? Math.floor(Math.random() * currentVideos.length) : 0;
                 currentIndex = startIndex;
-                
                 resetHistory();
                 addToHistory(currentIndex, false);
-                
                 if (ytPlayer) ytPlayer.loadVideoById(currentVideos[currentIndex].id);
                 updateNowPlaying();
-                
                 setLoading(false, `✅ LOADED ${currentVideos.length} VIDEOS`);
                 setTimeout(() => setLoading(false), 2000);
             } catch (err) {
@@ -687,6 +678,7 @@
             showToast(shuffleMode ? "Shuffle ON" : "Shuffle OFF");
         }
 
+        // FIXED: Share button now includes the YouTube URL
         function shareCurrentTrack() {
             if (!currentVideos.length) {
                 showToast("No track playing");
@@ -694,8 +686,13 @@
             }
             const video = currentVideos[currentIndex];
             const title = video.title || `Video ${video.id.slice(0,8)}...`;
-            const message = `🎵 Listening to "${title}" (${currentIndex+1}/${currentVideos.length}) on Dreambox Cyberdeck`;
-            navigator.clipboard.writeText(message).then(() => showToast("📋 Copied!")).catch(() => showToast("❌ Failed to copy"));
+            const url = `https://www.youtube.com/watch?v=${video.id}`;
+            const message = `🎵 Listening to "${title}" (${currentIndex+1}/${currentVideos.length}) on Dreambox Cyberdeck\n🔗 ${url}`;
+            navigator.clipboard.writeText(message).then(() => {
+                showToast("📋 Copied with link!");
+            }).catch(() => {
+                showToast("❌ Failed to copy");
+            });
         }
 
         function onPlayerReady() {
