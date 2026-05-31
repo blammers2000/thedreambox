@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         /* ==========================================
-           Your original CSS – unchanged (same as before)
+           Your original CSS – unchanged
         ========================================== */
         * {
             margin: 0;
@@ -18,14 +18,32 @@
         }
         body {
             background-color: #0c0d1f;
-            background-image: linear-gradient(rgba(240, 74, 131, 0.05) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(240, 74, 131, 0.05) 1px, transparent 1px);
-            background-size: 20px 20px;
             color: #ffffff;
             overflow-x: hidden;
             padding-bottom: 40px;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            position: relative;
+        }
+        /* Background video */
+        #bg-video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -2;
+        }
+        /* Dark overlay for readability */
+        .video-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(12, 13, 31, 0.7);
+            z-index: -1;
         }
         .crt-overlay {
             position: fixed;
@@ -58,6 +76,8 @@
             padding: 10px 20px;
             border-bottom: 4px solid #d26cf3;
             margin-bottom: 10px;
+            position: relative;
+            z-index: 100;
         }
         nav {
             display: flex;
@@ -100,6 +120,8 @@
             max-width: 1300px;
             margin: 0 auto;
             padding: 20px;
+            position: relative;
+            z-index: 10;
         }
         .media-box, .chat-container, .webring-container {
             background: linear-gradient(135deg, rgba(12, 13, 31, 0.85) 0%, rgba(210, 108, 243, 0.15) 100%);
@@ -254,6 +276,33 @@
             border-color: #ffaa00;
             color: #ffaa00;
         }
+        /* New: Share button style */
+        .share-btn {
+            background: rgba(12, 13, 31, 0.9);
+            border: 2px solid #5be8f9;
+            color: #5be8f9;
+            font-family: 'Impact', sans-serif;
+            padding: 6px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.9rem;
+            margin-left: 10px;
+        }
+        .share-btn:hover {
+            background: #d26cf3;
+            color: #0c0d1f;
+            border-color: #fff;
+            box-shadow: 0 0 12px #d26cf3;
+        }
+        .now-playing {
+            text-align: center;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #5be8f9;
+            letter-spacing: 1px;
+        }
         .chat-container iframe {
             border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.2);
@@ -326,264 +375,305 @@
             z-index: 10001;
             display: none;
         }
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: #d26cf3;
+            color: #0c0d1f;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            z-index: 10002;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .toast.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
-<div class="crt-overlay"></div>
+    <!-- Background video (VHS glitch loop) -->
+    <video id="bg-video" autoplay loop muted playsinline>
+        <source src="https://assets.mixkit.co/videos/preview/mixkit-digital-glitch-background-3123-large.mp4" type="video/mp4">
+    </video>
+    <div class="video-overlay"></div>
+    <div class="crt-overlay"></div>
 
-<header>
-    <nav>
-        <div class="logo">DREAMBOX CYBERDECK</div>
-        <ul>
-            <li><a href="https://thedreambox.neocities.org/index.html">HOME</a></li>
-            <li><a href="https://thedreambox.neocities.org/events.html">EVENTS</a></li>
-            <li><a href="https://thedreambox.neocities.org/reviews.html">REVIEWS</a></li>
-            <li><a href="#">LOUNGE</a></li> 
-            <li><a href="https://thedreambox.neocities.org/index.html#contact">BOOKING</a></li>
-        </ul>
-    </nav>
-</header>
+    <header>
+        <nav>
+            <div class="logo">DREAMBOX CYBERDECK</div>
+            <ul>
+                <li><a href="https://thedreambox.neocities.org/index.html">HOME</a></li>
+                <li><a href="https://thedreambox.neocities.org/events.html">EVENTS</a></li>
+                <li><a href="https://thedreambox.neocities.org/reviews.html">REVIEWS</a></li>
+                <li><a href="#">LOUNGE</a></li> 
+                <li><a href="https://thedreambox.neocities.org/index.html#contact">BOOKING</a></li>
+            </ul>
+        </nav>
+    </header>
 
-<main>
-    <div class="interactive-grid" style="display: flex; flex-direction: column; gap: 30px;">
-        <div class="media-box">
-            <div class="cyberdeck-layout">
-                <div class="player-area">
-                    <div class="cyber-player-frame">
-                        <div id="player-container" style="width: 100%; height: 520px; background: #000; border-radius: 12px; overflow: hidden;">
-                            <div id="cyber-deck"></div>
+    <main>
+        <div class="interactive-grid" style="display: flex; flex-direction: column; gap: 30px;">
+            <div class="media-box">
+                <div class="cyberdeck-layout">
+                    <div class="player-area">
+                        <div class="cyber-player-frame">
+                            <div id="player-container" style="width: 100%; height: 520px; background: #000; border-radius: 12px; overflow: hidden;">
+                                <div id="cyber-deck"></div>
+                            </div>
+                        </div>
+                        <div class="transport-wrapper" id="catbox-controls">
+                            <div class="transport-controls">
+                                <button class="transport-btn" id="prev-btn">◀ PREV</button>
+                                <button id="shuffle-btn" class="transport-btn">🔀 SHUF: ON</button>
+                                <button class="transport-btn" id="next-btn">NEXT ▶</button>
+                                <button class="share-btn" id="share-btn">📤 SHARE</button>
+                            </div>
+                            <div id="nowPlaying" class="now-playing">🎵 -- / --</div>
                         </div>
                     </div>
-                    <div class="transport-wrapper" id="catbox-controls">
-                        <div class="transport-controls">
-                            <button class="transport-btn" id="prev-btn">◀ PREV</button>
-                            <button id="shuffle-btn" class="transport-btn">🔀 SHUF: ON</button>
-                            <button class="transport-btn" id="next-btn">NEXT ▶</button>
+                    <div class="playlist-area">
+                        <div class="playlist-selector-tabs" id="playlistTabsWrapper">
+                            <button class="playlist-btn active" data-playlist-id="music_videos">MUSIC VIDEOS</button>
+                            <button class="playlist-btn" data-playlist-id="plur">PLUR</button>
+                            <button class="playlist-btn" data-playlist-id="vaporwave">VAPORWAVE</button>
+                            <button class="playlist-btn" data-playlist-id="slutpop">SLUT POP</button>
+                            <button class="playlist-btn" data-playlist-id="2010s">2010'S</button>
+                            <button class="playlist-btn" data-playlist-id="2000s">2000'S</button>
+                            <button class="playlist-btn" data-playlist-id="90s">90's</button>
+                            <button class="playlist-btn" data-playlist-id="80s">80's</button>
+                            <button class="playlist-btn" data-playlist-id="discover">DISCOVER</button>
                         </div>
-                    </div>
-                </div>
-                <div class="playlist-area">
-                    <div class="playlist-selector-tabs" id="playlistTabsWrapper">
-                        <button class="playlist-btn active" data-playlist-id="music_videos">MUSIC VIDEOS</button>
-                        <button class="playlist-btn" data-playlist-id="plur">PLUR</button>
-                        <button class="playlist-btn" data-playlist-id="vaporwave">VAPORWAVE</button>
-                        <button class="playlist-btn" data-playlist-id="slutpop">SLUT POP</button>
-                        <button class="playlist-btn" data-playlist-id="2010s">2010'S</button>
-                        <button class="playlist-btn" data-playlist-id="2000s">2000'S</button>
-                        <button class="playlist-btn" data-playlist-id="90s">90's</button>
-                        <button class="playlist-btn" data-playlist-id="80s">80's</button>
-                        <button class="playlist-btn" data-playlist-id="discover">DISCOVER</button>
-                    </div>
-                    <div class="vibe-text">
-                        <i class="fas fa-sync-alt"></i> SELECT WAVELENGTH
+                        <div class="vibe-text">
+                            <i class="fas fa-sync-alt"></i> SELECT WAVELENGTH
+                        </div>
                     </div>
                 </div>
             </div>
+            <div class="chat-container">
+                <h3><i class="fas fa-comment-dots"></i> LIVE CHAT // TERMINAL FEED</h3>
+                <iframe src="https://www3.cbox.ws/box/?boxid=3555518&boxtag=jujKLD" width="100%" height="450" allowtransparency="yes" allow="autoplay" frameborder="0" marginheight="0" marginwidth="0" scrolling="auto" style="border-radius: 12px; border: 1px solid #5be8f9;"></iframe>
+            </div>
         </div>
-        <div class="chat-container">
-            <h3><i class="fas fa-comment-dots"></i> LIVE CHAT // TERMINAL FEED</h3>
-            <iframe src="https://www3.cbox.ws/box/?boxid=3555518&boxtag=jujKLD" width="100%" height="450" allowtransparency="yes" allow="autoplay" frameborder="0" marginheight="0" marginwidth="0" scrolling="auto" style="border-radius: 12px; border: 1px solid #5be8f9;"></iframe>
+        <div class="webring-container">
+            <h3>📼 HOTLINE WEBRING 📼</h3>
+            <div class="webring-controls">
+                <a href="https://hotlinewebring.club/DREAMNJ/previous" class="webring-btn">◀ PREV</a>
+                <a href="https://hotlinewebring.club/" target="_blank" class="webring-hub">HUB</a>
+                <a href="https://hotlinewebring.club/DREAMNJ/next" class="webring-btn">NEXT ▶</a>
+            </div>
+            <p>✦ CONNECTED TO THE NEON WEB ✦</p>
         </div>
-    </div>
-    <div class="webring-container">
-        <h3>📼 HOTLINE WEBRING 📼</h3>
-        <div class="webring-controls">
-            <a href="https://hotlinewebring.club/DREAMNJ/previous" class="webring-btn">◀ PREV</a>
-            <a href="https://hotlinewebring.club/" target="_blank" class="webring-hub">HUB</a>
-            <a href="https://hotlinewebring.club/DREAMNJ/next" class="webring-btn">NEXT ▶</a>
-        </div>
-        <p>✦ CONNECTED TO THE NEON WEB ✦</p>
-    </div>
-</main>
+    </main>
 
-<footer>
-    <h2 style="font-size: 1.5rem;">GET BOOKED / DM FOR LOCATION</h2>
-    <p class="links">
-        <a href="mailto:booking@dreamboxproductions.com">✉ EMAIL US</a> // 
-        <a href="https://www.instagram.com/penni.pitstomp/" target="_blank">📸 INSTAGRAM</a>
-    </p>
-    <p class="host-tag">⚡ Hosted on GitHub Pages 🏳️‍🌈 🏳️‍⚧️</p>
-</footer>
+    <footer>
+        <h2 style="font-size: 1.5rem;">GET BOOKED / DM FOR LOCATION</h2>
+        <p class="links">
+            <a href="mailto:booking@dreamboxproductions.com">✉ EMAIL US</a> // 
+            <a href="https://www.instagram.com/penni.pitstomp/" target="_blank">📸 INSTAGRAM</a>
+        </p>
+        <p class="host-tag">⚡ Hosted on GitHub Pages 🏳️‍🌈 🏳️‍⚧️</p>
+    </footer>
 
-<div class="loading-indicator" id="loadingIndicator">⏳ FETCHING PLAYLIST...</div>
+    <div class="loading-indicator" id="loadingIndicator">⏳ FETCHING PLAYLIST...</div>
+    <div id="toast" class="toast">📋 Copied!</div>
 
-<script>
-    // ============================================================
-    // PLAYLIST PLAYER WITH HISTORY FOR PREV BUTTON (works with shuffle)
-    // ============================================================
-    let currentVideoIds = [];
-    let currentIndex = 0;
-    let shuffleMode = true; 
-    let ytPlayer = null;
-    let isLoading = false;
+    <script>
+        // ============================================================
+        // PLAYLIST PLAYER WITH HISTORY, NOW PLAYING COUNTER, AND SHARE
+        // ============================================================
+        let currentVideoIds = [];
+        let currentIndex = 0;
+        let shuffleMode = true; 
+        let ytPlayer = null;
+        let isLoading = false;
 
-    // Playback history (stores indices of played videos)
-    let playHistory = [];
-    let historyPosition = -1;  // points to current index in history
+        let playHistory = [];
+        let historyPosition = -1;
 
-    const loadingDiv = document.getElementById('loadingIndicator');
-    const shuffleBtn = document.getElementById('shuffle-btn');
-    const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById('next-btn');
+        const loadingDiv = document.getElementById('loadingIndicator');
+        const shuffleBtn = document.getElementById('shuffle-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const shareBtn = document.getElementById('share-btn');
+        const nowPlayingDiv = document.getElementById('nowPlaying');
+        const toastDiv = document.getElementById('toast');
 
-    async function fetchVideoIdsFromJSON(playlistId) {
-        const response = await fetch(`data/${playlistId}.json`);
-        if (!response.ok) {
-            throw new Error(`Failed to load data/${playlistId}.json (HTTP ${response.status})`);
-        }
-        const data = await response.json();
-        if (!Array.isArray(data)) {
-            throw new Error(`JSON file must contain an array of video IDs.`);
-        }
-        return data;
-    }
-
-    function setLoading(show, text = '⏳ FETCHING PLAYLIST...') {
-        loadingDiv.style.display = show ? 'block' : 'none';
-        if (show) loadingDiv.innerText = text;
-    }
-
-    function resetHistory() {
-        playHistory = [];
-        historyPosition = -1;
-    }
-
-    // Add an index to history and optionally load it
-    function addToHistory(index, loadNow = true) {
-        // If we are not at the end (e.g., after using Prev), truncate forward history
-        if (historyPosition < playHistory.length - 1) {
-            playHistory = playHistory.slice(0, historyPosition + 1);
-        }
-        playHistory.push(index);
-        historyPosition++;
-        // Keep history reasonable (max 100)
-        if (playHistory.length > 100) {
-            playHistory.shift();
-            historyPosition--;
-        }
-        if (loadNow) {
-            currentIndex = index;
-            ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
-        }
-    }
-
-    async function loadPlaylist(playlistId, buttonElement) {
-        if (isLoading) return;
-        isLoading = true;
-        setLoading(true, `⏳ LOADING ${buttonElement.innerText}...`);
-        document.querySelectorAll('.playlist-btn').forEach(btn => btn.classList.remove('active'));
-        buttonElement.classList.add('active');
-
-        try {
-            const videoIds = await fetchVideoIdsFromJSON(playlistId);
-            if (!videoIds.length) throw new Error('No videos found in JSON.');
-            currentVideoIds = videoIds;
-            
-            let startIndex;
-            if (shuffleMode) {
-                startIndex = Math.floor(Math.random() * currentVideoIds.length);
-            } else {
-                startIndex = 0;
+        async function fetchVideoIdsFromJSON(playlistId) {
+            const response = await fetch(`data/${playlistId}.json`);
+            if (!response.ok) {
+                throw new Error(`Failed to load data/${playlistId}.json (HTTP ${response.status})`);
             }
-            currentIndex = startIndex;
-            
-            resetHistory();
-            addToHistory(currentIndex, false);   // add to history but don't load yet (will load below)
-            
-            if (ytPlayer) ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
-            
-            setLoading(false, `✅ LOADED ${currentVideoIds.length} VIDEOS`);
-            setTimeout(() => setLoading(false), 2000);
-        } catch (err) {
-            console.error(err);
-            setLoading(false, `❌ ERROR: ${err.message}`);
-            setTimeout(() => setLoading(false), 3000);
-        } finally {
-            isLoading = false;
+            const data = await response.json();
+            if (!Array.isArray(data)) {
+                throw new Error(`JSON file must contain an array of video IDs.`);
+            }
+            return data;
         }
-    }
 
-    function playNext() {
-        if (!currentVideoIds.length) return;
-        let newIndex;
-        if (shuffleMode) {
-            do {
-                newIndex = Math.floor(Math.random() * currentVideoIds.length);
-            } while (newIndex === currentIndex && currentVideoIds.length > 1);
-        } else {
-            newIndex = (currentIndex + 1) % currentVideoIds.length;
+        function setLoading(show, text = '⏳ FETCHING PLAYLIST...') {
+            loadingDiv.style.display = show ? 'block' : 'none';
+            if (show) loadingDiv.innerText = text;
         }
-        // Add current video to history before moving
-        addToHistory(currentIndex, false);
-        // Add the new video (and load it)
-        addToHistory(newIndex, true);
-    }
 
-    function playPrev() {
-        if (!currentVideoIds.length) return;
-        // If there is previous history (at least 2 items and we are not at the first)
-        if (playHistory.length >= 2 && historyPosition > 0) {
-            // Move back one step in history
-            historyPosition--;
-            const prevIndex = playHistory[historyPosition];
-            currentIndex = prevIndex;
-            ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
-        } else {
-            // No history: wrap around (or pick random if shuffle)
+        function resetHistory() {
+            playHistory = [];
+            historyPosition = -1;
+        }
+
+        function addToHistory(index, loadNow = true) {
+            if (historyPosition < playHistory.length - 1) {
+                playHistory = playHistory.slice(0, historyPosition + 1);
+            }
+            playHistory.push(index);
+            historyPosition++;
+            if (playHistory.length > 100) {
+                playHistory.shift();
+                historyPosition--;
+            }
+            if (loadNow) {
+                currentIndex = index;
+                ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
+            }
+        }
+
+        function updateNowPlaying() {
+            if (currentVideoIds.length) {
+                nowPlayingDiv.innerText = `🎵 ${currentIndex+1} / ${currentVideoIds.length}`;
+            } else {
+                nowPlayingDiv.innerText = `🎵 -- / --`;
+            }
+        }
+
+        function showToast(msg) {
+            toastDiv.innerText = msg;
+            toastDiv.classList.add('show');
+            setTimeout(() => {
+                toastDiv.classList.remove('show');
+            }, 2000);
+        }
+
+        async function loadPlaylist(playlistId, buttonElement) {
+            if (isLoading) return;
+            isLoading = true;
+            setLoading(true, `⏳ LOADING ${buttonElement.innerText}...`);
+            document.querySelectorAll('.playlist-btn').forEach(btn => btn.classList.remove('active'));
+            buttonElement.classList.add('active');
+
+            try {
+                const videoIds = await fetchVideoIdsFromJSON(playlistId);
+                if (!videoIds.length) throw new Error('No videos found in JSON.');
+                currentVideoIds = videoIds;
+                
+                let startIndex;
+                if (shuffleMode) {
+                    startIndex = Math.floor(Math.random() * currentVideoIds.length);
+                } else {
+                    startIndex = 0;
+                }
+                currentIndex = startIndex;
+                
+                resetHistory();
+                addToHistory(currentIndex, false);
+                
+                if (ytPlayer) ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
+                
+                updateNowPlaying();
+                setLoading(false, `✅ LOADED ${currentVideoIds.length} VIDEOS`);
+                setTimeout(() => setLoading(false), 2000);
+            } catch (err) {
+                console.error(err);
+                setLoading(false, `❌ ERROR: ${err.message}`);
+                setTimeout(() => setLoading(false), 3000);
+            } finally {
+                isLoading = false;
+            }
+        }
+
+        function playNext() {
+            if (!currentVideoIds.length) return;
             let newIndex;
             if (shuffleMode) {
                 do {
                     newIndex = Math.floor(Math.random() * currentVideoIds.length);
                 } while (newIndex === currentIndex && currentVideoIds.length > 1);
             } else {
-                newIndex = (currentIndex - 1 + currentVideoIds.length) % currentVideoIds.length;
+                newIndex = (currentIndex + 1) % currentVideoIds.length;
             }
+            addToHistory(currentIndex, false);
             addToHistory(newIndex, true);
+            updateNowPlaying();
         }
-    }
 
-    function toggleShuffle() {
-        shuffleMode = !shuffleMode;
-        shuffleBtn.innerText = shuffleMode ? "🔀 SHUF: ON" : "🔀 SHUF: OFF";
-        shuffleBtn.style.background = shuffleMode ? "#ffaa00" : "#0c0d1f";
-        shuffleBtn.style.color = shuffleMode ? "#0c0d1f" : "#ffaa00";
-        shuffleBtn.style.borderColor = shuffleMode ? "#ffffff" : "#5be8f9";
-        // Optionally reset history when toggling shuffle? (Not required, but keeps it clean)
-        // resetHistory();
-    }
-
-    function onPlayerReady() {
-        const activeBtn = document.querySelector('.playlist-btn.active');
-        if (activeBtn) {
-            const playlistId = activeBtn.getAttribute('data-playlist-id');
-            if (playlistId) loadPlaylist(playlistId, activeBtn);
+        function playPrev() {
+            if (!currentVideoIds.length) return;
+            if (playHistory.length >= 2 && historyPosition > 0) {
+                historyPosition--;
+                const prevIndex = playHistory[historyPosition];
+                currentIndex = prevIndex;
+                ytPlayer.loadVideoById(currentVideoIds[currentIndex]);
+                updateNowPlaying();
+            } else {
+                let newIndex;
+                if (shuffleMode) {
+                    do {
+                        newIndex = Math.floor(Math.random() * currentVideoIds.length);
+                    } while (newIndex === currentIndex && currentVideoIds.length > 1);
+                } else {
+                    newIndex = (currentIndex - 1 + currentVideoIds.length) % currentVideoIds.length;
+                }
+                addToHistory(newIndex, true);
+                updateNowPlaying();
+            }
         }
-    }
 
-    function onPlayerStateChange(event) {
-        if (event.data === YT.PlayerState.ENDED) {
+        function toggleShuffle() {
+            shuffleMode = !shuffleMode;
+            shuffleBtn.innerText = shuffleMode ? "🔀 SHUF: ON" : "🔀 SHUF: OFF";
+            shuffleBtn.style.background = shuffleMode ? "#ffaa00" : "#0c0d1f";
+            shuffleBtn.style.color = shuffleMode ? "#0c0d1f" : "#ffaa00";
+            shuffleBtn.style.borderColor = shuffleMode ? "#ffffff" : "#5be8f9";
+            showToast(shuffleMode ? "Shuffle ON" : "Shuffle OFF");
+        }
+
+        function shareCurrentTrack() {
+            if (!currentVideoIds.length) {
+                showToast("No track playing");
+                return;
+            }
+            const message = `🎵 Listening to track ${currentIndex+1} of ${currentVideoIds.length} on Dreambox Cyberdeck`;
+            navigator.clipboard.writeText(message).then(() => {
+                showToast("📋 Copied to clipboard!");
+            }).catch(() => {
+                showToast("❌ Failed to copy");
+            });
+        }
+
+        function onPlayerReady() {
+            const activeBtn = document.querySelector('.playlist-btn.active');
+            if (activeBtn) {
+                const playlistId = activeBtn.getAttribute('data-playlist-id');
+                if (playlistId) loadPlaylist(playlistId, activeBtn);
+            }
+        }
+
+        function onPlayerStateChange(event) {
+            if (event.data === YT.PlayerState.ENDED) {
+                playNext();
+            }
+        }
+
+        function onPlayerError(event) {
+            console.warn(`Skipping video (error ${event.data})`);
             playNext();
         }
-    }
 
-    function onPlayerError(event) {
-        console.warn(`Skipping video (error ${event.data})`);
-        playNext();
-    }
-
-    function initYouTubePlayer() {
-        if (typeof YT !== 'undefined' && YT.Player) {
-            ytPlayer = new YT.Player('cyber-deck', {
-                width: '100%', height: '100%',
-                playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
-                events: {
-                    onReady: onPlayerReady,
-                    onStateChange: onPlayerStateChange,
-                    onError: onPlayerError
-                }
-            });
-        } else {
-            window.onYouTubeIframeAPIReady = () => {
+        function initYouTubePlayer() {
+            if (typeof YT !== 'undefined' && YT.Player) {
                 ytPlayer = new YT.Player('cyber-deck', {
                     width: '100%', height: '100%',
                     playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
@@ -593,28 +683,40 @@
                         onError: onPlayerError
                     }
                 });
-            };
-            const tag = document.createElement('script');
-            tag.src = "https://www.youtube.com/iframe_api";
-            document.head.appendChild(tag);
+            } else {
+                window.onYouTubeIframeAPIReady = () => {
+                    ytPlayer = new YT.Player('cyber-deck', {
+                        width: '100%', height: '100%',
+                        playerVars: { autoplay: 1, modestbranding: 1, rel: 0 },
+                        events: {
+                            onReady: onPlayerReady,
+                            onStateChange: onPlayerStateChange,
+                            onError: onPlayerError
+                        }
+                    });
+                };
+                const tag = document.createElement('script');
+                tag.src = "https://www.youtube.com/iframe_api";
+                document.head.appendChild(tag);
+            }
         }
-    }
 
-    function bindControls() {
-        prevBtn.onclick = playPrev;
-        nextBtn.onclick = playNext;
-        shuffleBtn.onclick = toggleShuffle;
-        document.querySelectorAll('.playlist-btn').forEach(btn => {
-            btn.onclick = (e) => {
-                e.preventDefault();
-                const playlistId = btn.getAttribute('data-playlist-id');
-                if (playlistId) loadPlaylist(playlistId, btn);
-            };
-        });
-    }
+        function bindControls() {
+            prevBtn.onclick = playPrev;
+            nextBtn.onclick = playNext;
+            shuffleBtn.onclick = toggleShuffle;
+            shareBtn.onclick = shareCurrentTrack;
+            document.querySelectorAll('.playlist-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    const playlistId = btn.getAttribute('data-playlist-id');
+                    if (playlistId) loadPlaylist(playlistId, btn);
+                };
+            });
+        }
 
-    bindControls();
-    initYouTubePlayer();
-</script>
+        bindControls();
+        initYouTubePlayer();
+    </script>
 </body>
 </html>
