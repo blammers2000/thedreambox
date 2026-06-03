@@ -15,7 +15,13 @@
 </head>
 <body>
 <h2>Batch Enrich JSON Files (add titles)</h2>
-<p>Select <strong>multiple</strong> JSON files (each containing an array of video IDs). The tool will fetch titles via YouTube API and save enriched files.</p>
+<p>Select <strong>multiple</strong> JSON files. Each file can be:</p>
+<ul>
+    <li>An array of video ID strings: <code>["id1","id2"]</code></li>
+    <li>An array of objects with <code>id</code> (and optional <code>title</code>): <code>[{"id":"id1","title":"..."}]</code></li>
+    <li>An object with numeric keys (like <code>{"0":{"id":"id1"},"1":{...}}</code>) – will be auto‑converted.</li>
+</ul>
+<p>The tool will fill missing/unknown titles using the YouTube API and save enriched files.</p>
 <input type="file" id="fileInput" accept=".json" multiple>
 <button id="enrichBtn">Enrich All Files</button>
 <div id="status" class="status"></div>
@@ -23,8 +29,9 @@
 <script>
 const API_KEY = 'AIzaSyAZKamrcHaJPk29dNx0U58gudRPlvxWtJI'; // Replace if needed
 
+// Fetch titles for a batch of video IDs (max 50)
 async function fetchTitlesForBatch(videoIds) {
-    if (!videoIds.length) return [];
+    if (!videoIds.length) return {};
     const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}&key=${API_KEY}`;
     const response = await fetch(url);
     const data = await response.json();
@@ -33,26 +40,80 @@ async function fetchTitlesForBatch(videoIds) {
     if (data.items) {
         data.items.forEach(item => { titleMap[item.id] = item.snippet.title; });
     }
-    return videoIds.map(id => ({
-        id: id,
-        title: titleMap[id] || `Unknown video (${id.slice(0,8)}...)`
-    }));
+    return titleMap;
 }
 
+// Convert any sensible input format into a normalized array of { id, title? } objects
+function normalizeInput(parsed) {
+    // 1) Already array of objects with id? Keep as is
+    if (Array.isArray(parsed)) {
+        // If the first element is a string, assume it's an array of IDs
+        if (parsed.length && typeof parsed[0] === 'string') {
+            return parsed.map(id => ({ id, title: null }));
+        }
+        // Otherwise assume array of objects (at least have id)
+        return parsed.map(item => ({
+            id: item.id,
+            title: item.title !== undefined ? item.title : null
+        }));
+    }
+    // 2) Object with numeric keys (e.g., {"0":{"id":"xyz"},"1":{...}})
+    if (typeof parsed === 'object' && parsed !== null) {
+        const keys = Object.keys(parsed);
+        if (keys.length && keys.every(k => !isNaN(parseInt(k)))) {
+            const arr = [];
+            for (let k of keys) {
+                const obj = parsed[k];
+                if (obj && obj.id) {
+                    arr.push({ id: obj.id, title: obj.title || null });
+                }
+            }
+            if (arr.length) return arr;
+        }
+    }
+    throw new Error('Unsupported JSON structure: expected an array of IDs, array of objects with "id", or an object with numeric keys pointing to objects with "id".');
+}
+
+// Enrich a single file: fetch missing titles and return normalized array
 async function enrichFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
-                const ids = JSON.parse(e.target.result);
-                if (!Array.isArray(ids)) throw new Error('File does not contain an array');
-                const enriched = [];
-                for (let i = 0; i < ids.length; i += 50) {
-                    const chunk = ids.slice(i, i + 50);
-                    const enrichedChunk = await fetchTitlesForBatch(chunk);
-                    enriched.push(...enrichedChunk);
+                const raw = JSON.parse(e.target.result);
+                let items = normalizeInput(raw);
+                
+                // Collect IDs that need a title (missing or placeholder)
+                const idsToFetch = [];
+                for (let item of items) {
+                    const hasGoodTitle = item.title && typeof item.title === 'string' && 
+                                        !item.title.startsWith('Unknown video') && 
+                                        item.title.trim() !== '';
+                    if (!hasGoodTitle) {
+                        idsToFetch.push(item.id);
+                    }
                 }
-                resolve(enriched);
+                
+                // Fetch titles in batches of 50
+                const titleMap = {};
+                for (let i = 0; i < idsToFetch.length; i += 50) {
+                    const batch = idsToFetch.slice(i, i + 50);
+                    const batchMap = await fetchTitlesForBatch(batch);
+                    Object.assign(titleMap, batchMap);
+                    // Small delay to avoid hitting rate limits too hard
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                
+                // Update items with fetched titles
+                for (let item of items) {
+                    if (titleMap[item.id]) {
+                        item.title = titleMap[item.id];
+                    } else if (!item.title || item.title.startsWith('Unknown video')) {
+                        item.title = `Unknown video (${item.id.slice(0,8)}...)`;
+                    }
+                }
+                
+                resolve(items);
             } catch (err) {
                 reject(err);
             }
@@ -97,7 +158,7 @@ document.getElementById('enrichBtn').onclick = async () => {
             fileDiv.classList.add('error');
         }
 
-        // Small delay to avoid overwhelming the API
+        // Brief pause between files
         await new Promise(r => setTimeout(r, 500));
     }
     statusDiv.innerHTML += `<br>🎉 All files processed. Check your downloads folder.`;
