@@ -1,29 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Batch Enrich JSON Files (add titles)</title>
+    <title>Batch Enrich & Combine JSON Playlists</title>
     <style>
         body { background: #0c0d1f; color: #fff; font-family: monospace; padding: 20px; }
-        input, button { background: #1e1f3a; color: #5be8f9; border: 1px solid #d26cf3; padding: 8px; margin: 5px; border-radius: 8px; }
-        button { cursor: pointer; }
+        input[type="file"], button { background: #1e1f3a; color: #5be8f9; border: 1px solid #d26cf3; padding: 8px; margin: 5px; border-radius: 8px; }
+        button { cursor: pointer; font-weight: bold; }
         button:hover { background: #d26cf3; color: #0c0d1f; }
+        .controls { margin: 15px 0; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; border: 1px dashed #5be8f9; }
+        .checkbox-label { cursor: pointer; font-size: 1.1em; display: flex; align-items: center; gap: 8px; }
+        .checkbox-label input { transform: scale(1.2); cursor: pointer; }
         .status { margin-top: 20px; white-space: pre-wrap; font-family: monospace; background: #000; padding: 10px; border-radius: 8px; max-height: 400px; overflow-y: auto; }
         .file-item { margin: 5px 0; padding: 4px; border-bottom: 1px solid #333; }
         .success { color: #5be8f9; }
         .error { color: #d26cf3; }
+        .warning { color: #ffaa00; }
     </style>
 </head>
 <body>
-<h2>Batch Enrich JSON Files (add titles)</h2>
-<p>Select <strong>multiple</strong> JSON files. Each file can be:</p>
-<ul>
-    <li>An array of video ID strings: <code>["id1","id2"]</code></li>
-    <li>An array of objects with <code>id</code> (and optional <code>title</code>): <code>[{"id":"id1","title":"..."}]</code></li>
-    <li>An object with numeric keys (like <code>{"0":{"id":"id1"},"1":{...}}</code>) – will be auto‑converted.</li>
-</ul>
-<p>The tool will fill missing/unknown titles using the YouTube API and save enriched files.</p>
-<input type="file" id="fileInput" accept=".json" multiple>
-<button id="enrichBtn">Enrich All Files</button>
+<h2>📺 Batch Enrich & Combine JSON Playlists</h2>
+<p>Select <strong>multiple</strong> JSON files. The tool will parse them, fetch missing titles from YouTube, and output a clean file.</p>
+
+<div class="controls">
+    <input type="file" id="fileInput" accept=".json" multiple>
+    <br><br>
+    <label class="checkbox-label">
+        <input type="checkbox" id="combineCheckbox" checked>
+        Merge all selected playlists into one combined file (Removes duplicates)
+    </label>
+    <br>
+    <button id="enrichBtn">Enrich & Process Files</button>
+</div>
+
 <div id="status" class="status"></div>
 
 <script>
@@ -45,19 +53,15 @@ async function fetchTitlesForBatch(videoIds) {
 
 // Convert any sensible input format into a normalized array of { id, title? } objects
 function normalizeInput(parsed) {
-    // 1) Already array of objects with id? Keep as is
     if (Array.isArray(parsed)) {
-        // If the first element is a string, assume it's an array of IDs
         if (parsed.length && typeof parsed[0] === 'string') {
             return parsed.map(id => ({ id, title: null }));
         }
-        // Otherwise assume array of objects (at least have id)
         return parsed.map(item => ({
             id: item.id,
             title: item.title !== undefined ? item.title : null
         }));
     }
-    // 2) Object with numeric keys (e.g., {"0":{"id":"xyz"},"1":{...}})
     if (typeof parsed === 'object' && parsed !== null) {
         const keys = Object.keys(parsed);
         if (keys.length && keys.every(k => !isNaN(parseInt(k)))) {
@@ -71,56 +75,64 @@ function normalizeInput(parsed) {
             if (arr.length) return arr;
         }
     }
-    throw new Error('Unsupported JSON structure: expected an array of IDs, array of objects with "id", or an object with numeric keys pointing to objects with "id".');
+    throw new Error('Unsupported JSON structure.');
 }
 
-// Enrich a single file: fetch missing titles and return normalized array
-async function enrichFile(file) {
+// Read and parse a single file from the user's computer
+async function parseFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = async (e) => {
+        reader.onload = (e) => {
             try {
                 const raw = JSON.parse(e.target.result);
-                let items = normalizeInput(raw);
-                
-                // Collect IDs that need a title (missing or placeholder)
-                const idsToFetch = [];
-                for (let item of items) {
-                    const hasGoodTitle = item.title && typeof item.title === 'string' && 
-                                        !item.title.startsWith('Unknown video') && 
-                                        item.title.trim() !== '';
-                    if (!hasGoodTitle) {
-                        idsToFetch.push(item.id);
-                    }
-                }
-                
-                // Fetch titles in batches of 50
-                const titleMap = {};
-                for (let i = 0; i < idsToFetch.length; i += 50) {
-                    const batch = idsToFetch.slice(i, i + 50);
-                    const batchMap = await fetchTitlesForBatch(batch);
-                    Object.assign(titleMap, batchMap);
-                    // Small delay to avoid hitting rate limits too hard
-                    await new Promise(r => setTimeout(r, 200));
-                }
-                
-                // Update items with fetched titles
-                for (let item of items) {
-                    if (titleMap[item.id]) {
-                        item.title = titleMap[item.id];
-                    } else if (!item.title || item.title.startsWith('Unknown video')) {
-                        item.title = `Unknown video (${item.id.slice(0,8)}...)`;
-                    }
-                }
-                
-                resolve(items);
+                resolve(normalizeInput(raw));
             } catch (err) {
-                reject(err);
+                reject(new Error("Invalid JSON format"));
             }
         };
         reader.onerror = () => reject(reader.error);
         reader.readAsText(file);
     });
+}
+
+// Takes an array of normalized objects, finds missing titles, fetches them, and returns the final array
+async function enrichItems(items, updateStatusUI) {
+    const idsToFetch = [];
+    
+    // Identify which IDs need looking up
+    for (let item of items) {
+        const hasGoodTitle = item.title && typeof item.title === 'string' && 
+                             !item.title.startsWith('Unknown video') && 
+                             item.title.trim() !== '';
+        if (!hasGoodTitle) {
+            idsToFetch.push(item.id);
+        }
+    }
+
+    if (idsToFetch.length > 0) {
+        if(updateStatusUI) updateStatusUI(`Fetching ${idsToFetch.length} missing titles from YouTube...`);
+    }
+
+    // Fetch in batches of 50
+    const titleMap = {};
+    for (let i = 0; i < idsToFetch.length; i += 50) {
+        const batch = idsToFetch.slice(i, i + 50);
+        const batchMap = await fetchTitlesForBatch(batch);
+        Object.assign(titleMap, batchMap);
+        // Delay to avoid rate limiting
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Apply fetched titles
+    for (let item of items) {
+        if (titleMap[item.id]) {
+            item.title = titleMap[item.id];
+        } else if (!item.title || item.title.startsWith('Unknown video')) {
+            item.title = `Unknown video (${item.id.slice(0,8)}...)`;
+        }
+    }
+
+    return items;
 }
 
 function downloadJSON(data, filename) {
@@ -132,36 +144,81 @@ function downloadJSON(data, filename) {
     URL.revokeObjectURL(link.href);
 }
 
+// Main Execution
 document.getElementById('enrichBtn').onclick = async () => {
     const files = document.getElementById('fileInput').files;
+    const combine = document.getElementById('combineCheckbox').checked;
     const statusDiv = document.getElementById('status');
+    
     if (!files.length) {
         alert('Select at least one JSON file');
         return;
     }
+    
     statusDiv.innerHTML = '';
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const fileDiv = document.createElement('div');
-        fileDiv.className = 'file-item';
-        fileDiv.innerHTML = `⏳ Processing ${file.name}...`;
-        statusDiv.appendChild(fileDiv);
-
+    
+    if (combine) {
+        // --- COMBINED MODE ---
+        let allItemsMap = new Map(); // Using a Map to deduplicate by Video ID
+        statusDiv.innerHTML += `<div class="file-item warning">⏳ Parsing and merging ${files.length} files...</div>`;
+        
+        // 1. Read and combine all files
+        for (let file of files) {
+            try {
+                const items = await parseFile(file);
+                for (let item of items) {
+                    // Deduplication logic: If we already have this ID, only overwrite if the new one has a better title
+                    if (!allItemsMap.has(item.id)) {
+                        allItemsMap.set(item.id, item);
+                    } else {
+                        const existing = allItemsMap.get(item.id);
+                        if (!existing.title && item.title) {
+                            allItemsMap.set(item.id, item);
+                        }
+                    }
+                }
+            } catch (err) {
+                statusDiv.innerHTML += `<div class="file-item error">❌ Failed to parse ${file.name}: ${err.message}</div>`;
+            }
+        }
+        
+        let combinedArray = Array.from(allItemsMap.values());
+        statusDiv.innerHTML += `<div class="file-item success">✅ Merged successfully. ${combinedArray.length} unique videos found.</div>`;
+        
+        // 2. Enrich the massive combined array
         try {
-            const enriched = await enrichFile(file);
-            const outputName = file.name.replace('.json', '_enriched.json');
-            downloadJSON(enriched, outputName);
-            fileDiv.innerHTML = `✅ ${file.name} → ${outputName} (${enriched.length} videos)`;
-            fileDiv.classList.add('success');
+            const finalData = await enrichItems(combinedArray, (msg) => {
+                statusDiv.innerHTML += `<div class="file-item">📡 ${msg}</div>`;
+            });
+            downloadJSON(finalData, 'combined_enriched_playlist.json');
+            statusDiv.innerHTML += `<div class="file-item success">🎉 Master playlist downloaded! (combined_enriched_playlist.json)</div>`;
         } catch (err) {
-            fileDiv.innerHTML = `❌ ${file.name}: ${err.message}`;
-            fileDiv.classList.add('error');
+            statusDiv.innerHTML += `<div class="file-item error">❌ API Error: ${err.message}</div>`;
         }
 
-        // Brief pause between files
-        await new Promise(r => setTimeout(r, 500));
+    } else {
+        // --- INDIVIDUAL MODE ---
+        for (let file of files) {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+            fileDiv.innerHTML = `⏳ Processing ${file.name}...`;
+            statusDiv.appendChild(fileDiv);
+
+            try {
+                const items = await parseFile(file);
+                const enriched = await enrichItems(items, null);
+                const outputName = file.name.replace('.json', '_enriched.json');
+                downloadJSON(enriched, outputName);
+                fileDiv.innerHTML = `✅ ${file.name} → ${outputName} (${enriched.length} videos)`;
+                fileDiv.classList.add('success');
+            } catch (err) {
+                fileDiv.innerHTML = `❌ ${file.name}: ${err.message}`;
+                fileDiv.classList.add('error');
+            }
+            await new Promise(r => setTimeout(r, 500));
+        }
+        statusDiv.innerHTML += `<br>🎉 All files processed individually.`;
     }
-    statusDiv.innerHTML += `<br>🎉 All files processed. Check your downloads folder.`;
 };
 </script>
 </body>
