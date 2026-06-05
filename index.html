@@ -133,7 +133,6 @@
             position: relative;
             z-index: 10;
         }
-        /* No backdrop-filter on containers – use semi-transparent bg */
         .media-box, .chat-container, .webring-container {
             background: linear-gradient(135deg, rgba(12, 13, 31, 0.9) 0%, rgba(210, 108, 243, 0.2) 100%);
             border: 2px solid rgba(255, 255, 255, 0.4);
@@ -368,11 +367,6 @@
             font-size: 0.8rem;
             opacity: 0.7;
         }
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0.4; }
-            100% { opacity: 1; }
-        }
         .loading-indicator {
             position: fixed;
             bottom: 20px;
@@ -492,14 +486,14 @@
 
     <script>
         // ============================================================
-        // PERFORMANCE-OPTIMISED PLAYER (no heavy CSS, smooth video)
-        // All features: enriched JSON, titles, shuffle history, share with link
+        // PERFORMANCE-OPTIMISED PLAYER (Deep-Linked Engine Update)
         // ============================================================
         let currentVideos = [];
         let currentIndex = 0;
         let shuffleMode = true; 
         let ytPlayer = null;
         let isLoading = false;
+        let currentPlaylistId = 'music_videos'; // Track active playlist ID globally
 
         let playHistory = [];
         let historyPosition = -1;
@@ -560,6 +554,9 @@
             const video = currentVideos[currentIndex];
             const title = video.title || `Video ${video.id.slice(0,8)}...`;
             nowPlayingDiv.innerText = `🎵 ${title} (${currentIndex+1}/${currentVideos.length})`;
+            
+            // Updates browser URL bar cleanly as they listen so they can copy the URL anytime
+            window.history.replaceState(null, null, `#playlist=${currentPlaylistId}&v=${video.id}`);
         }
 
         function showToast(msg) {
@@ -568,9 +565,11 @@
             setTimeout(() => toastDiv.classList.remove('show'), 2000);
         }
 
-        async function loadPlaylist(playlistId, buttonElement) {
+        async function loadPlaylist(playlistId, buttonElement, targetVideoId = null) {
             if (isLoading) return;
             isLoading = true;
+            currentPlaylistId = playlistId; // Store modern playlist state
+            
             setLoading(true, `⏳ LOADING ${buttonElement.innerText}...`);
             document.querySelectorAll('.playlist-btn').forEach(btn => btn.classList.remove('active'));
             buttonElement.classList.add('active');
@@ -579,7 +578,17 @@
                 const videos = await fetchEnrichedPlaylist(playlistId);
                 if (!videos.length) throw new Error('No videos found.');
                 currentVideos = videos;
-                let startIndex = shuffleMode ? Math.floor(Math.random() * currentVideos.length) : 0;
+                
+                let startIndex = 0;
+                // Routing: check if deep link wants a specific video
+                if (targetVideoId) {
+                    const foundIndex = currentVideos.findIndex(v => v.id === targetVideoId);
+                    if (foundIndex !== -1) startIndex = foundIndex;
+                    else startIndex = shuffleMode ? Math.floor(Math.random() * currentVideos.length) : 0;
+                } else {
+                    startIndex = shuffleMode ? Math.floor(Math.random() * currentVideos.length) : 0;
+                }
+
                 currentIndex = startIndex;
                 resetHistory();
                 addToHistory(currentIndex, false);
@@ -647,18 +656,40 @@
             }
             const video = currentVideos[currentIndex];
             const title = video.title || `Video ${video.id.slice(0,8)}...`;
-            const url = `https://www.youtube.com/watch?v=${video.id}`;
-            const message = `🎵 Listening to "${title}" (${currentIndex+1}/${currentVideos.length}) on Dreambox Cyberdeck\n🔗 ${url}`;
+            
+            // CRITICAL ENGINE FIX: Link points back to YOUR app container, preserving traffic
+            const localShareUrl = `${window.location.origin}${window.location.pathname}#playlist=${currentPlaylistId}&v=${video.id}`;
+            const message = `🎵 Cyberdeck Lounge tuning in... Now playing: "${title}"\n🔗 ${localShareUrl}`;
+            
             navigator.clipboard.writeText(message).then(() => {
-                showToast("📋 Copied with link!");
+                showToast("📋 Copied local link!");
             }).catch(() => {
                 showToast("❌ Failed to copy");
             });
         }
 
+        function parseDeepLinkAndLoad() {
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            const targetPlaylist = params.get('playlist');
+            const targetVideo = params.get('v');
+
+            let targetBtn = null;
+            if (targetPlaylist) {
+                targetBtn = document.querySelector(`.playlist-btn[data-playlist-id="${targetPlaylist}"]`);
+            }
+            if (!targetBtn) {
+                targetBtn = document.querySelector('.playlist-btn.active');
+            }
+
+            if (targetBtn) {
+                const playlistId = targetBtn.getAttribute('data-playlist-id');
+                loadPlaylist(playlistId, targetBtn, targetVideo);
+            }
+        }
+
         function onPlayerReady() {
-            const activeBtn = document.querySelector('.playlist-btn.active');
-            if (activeBtn) loadPlaylist(activeBtn.getAttribute('data-playlist-id'), activeBtn);
+            parseDeepLinkAndLoad();
         }
 
         function onPlayerStateChange(event) {
